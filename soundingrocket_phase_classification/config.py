@@ -105,6 +105,15 @@ XGB_PARAMS = {
     "n_jobs":             -1,
 }
 
+# ─────────────────────────────────────────────
+# PI-XGB HYPERPARAMETERS (Physics-Informed)
+# ─────────────────────────────────────────────
+# Same base parameters as standard XGBoost to ensure a fair ablation comparison
+PI_XGB_PARAMS = XGB_PARAMS.copy()
+PI_XGB_LAMBDA_ENERGY     = 2.0  # Weight for energy monotonicity penalty
+PI_XGB_LAMBDA_TRANSITION = 5.0  # Weight for legal phase sequence penalty
+PI_XGB_LAMBDA_KINEMATICS = 2.0  # Weight for velocity/phase sign penalty
+
 RF_PARAMS = {
     "n_estimators":      300,
     "max_depth":        None,

@@ -103,5 +103,75 @@
     "model": "SVM",
     "fold": "fold_rocket_6",
     "macro_f1": 0.787576
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_0",
+    "macro_f1": 0.514758
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_1",
+    "macro_f1": 0.925252
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_2",
+    "macro_f1": 0.956374
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_3",
+    "macro_f1": 0.804518
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_4",
+    "macro_f1": 0.904292
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_5",
+    "macro_f1": 0.159664
+  },
+  {
+    "model": "PhaseNet",
+    "fold": "fold_rocket_6",
+    "macro_f1": 0.768806
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_0",
+    "macro_f1": 0.578939
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_1",
+    "macro_f1": 0.9503
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_2",
+    "macro_f1": 0.876922
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_3",
+    "macro_f1": 0.877136
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_4",
+    "macro_f1": 0.876083
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_5",
+    "macro_f1": 0.894516
+  },
+  {
+    "model": "PI-XGB",
+    "fold": "fold_rocket_6",
+    "macro_f1": 0.811389
   }
 ]

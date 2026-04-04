@@ -29,6 +29,7 @@ plt.rcParams.update({
 
 MODEL_COLORS = {
     "XGBoost":      "#e74c3c",
+    "PI-XGB":       "#fc8e42",  # Distinct orange for the physics-informed version
     "RandomForest": "#2ecc71",
     "SVM":          "#3498db",
     "LSTM":         "#9b59b6",

@@ -13,5 +13,15 @@
     "model": "SVM",
     "mean_macro_f1": 0.7134195803944795,
     "std_macro_f1": 0.22680448457616512
+  },
+  {
+    "model": "PhaseNet",
+    "mean_macro_f1": 0.7190949136895604,
+    "std_macro_f1": 0.2666150472207513
+  },
+  {
+    "model": "PI-XGB",
+    "mean_macro_f1": 0.8378979013218464,
+    "std_macro_f1": 0.11220080217487562
   }
 ]

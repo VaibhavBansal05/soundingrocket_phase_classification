@@ -59,7 +59,7 @@ def load_best_model(model_name: str):
     Falls back to the alphabetically first available fold if the
     summary file is missing or has no matching entry.
     """
-    prefix = model_name.lower().replace(" ", "_")
+    prefix = model_name.lower().replace(" ", "_").replace("-", "_")
     all_pkls = sorted([
         f for f in os.listdir(config.MODELS_DIR)
         if f.startswith(prefix) and f.endswith(".pkl")
