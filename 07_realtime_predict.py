@@ -333,7 +333,7 @@ def plot_realtime_result(records: list, flight_name: str, model_name: str):
         config.PLOTS_DIR,
         f"realtime_{flight_name}_{model_name.lower()}.png"
     )
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
     print(f"\n  Summary plot saved → {path}")
 

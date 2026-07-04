@@ -217,7 +217,7 @@ def plot_confusion_matrix(y_true, y_pred, model_name, labels=config.PHASE_LABELS
     plt.tight_layout()
     path = os.path.join(config.PLOTS_DIR,
                         f"cm_{model_name.lower().replace(' ', '_')}.png")
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
     print(f"  Saved confusion matrix → {path}")
 
@@ -245,7 +245,7 @@ def plot_roc_curves(y_true, y_score, model_name, labels=config.PHASE_LABELS):
     plt.tight_layout()
     path = os.path.join(config.PLOTS_DIR,
                         f"roc_{model_name.lower().replace(' ', '_')}.png")
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
     print(f"  Saved ROC curves → {path}")
 
@@ -270,13 +270,14 @@ def plot_feature_importance(model, feature_names, model_name, top_n=15):
     ax.barh(range(n), importances[indices][::-1], color="steelblue")
     ax.set_yticks(range(n))
     ax.set_yticklabels([feature_names[i] for i in indices[::-1]], fontsize=9)
-    ax.set_xlabel("Importance")
+    ax.set_xlabel("Gain Importance (XGBoost)")
+    ax.set_ylabel("Feature")
     ax.set_title(f"{model_name} — Top {n} Feature Importances",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     path = os.path.join(config.PLOTS_DIR,
                         f"feat_imp_{model_name.lower().replace(' ', '_')}.png")
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
     print(f"  Saved feature importance → {path}")
 
@@ -296,13 +297,13 @@ def plot_phase_timeline(df, flight_name):
         ax.scatter(df.loc[mask, config.COL_TIME],
                    df.loc[mask, config.COL_ALTITUDE],
                    c=color, label=phase, s=5, alpha=0.8)
-    ax.set_xlabel(f"Time ({config.COL_TIME})")
+    ax.set_xlabel("Time (deciseconds; 1 ds = 0.1 s)")
     ax.set_ylabel("Altitude (m)")
     ax.set_title(f"Flight: {flight_name} — Phase Labels",
                  fontsize=13, fontweight="bold")
     ax.legend(markerscale=3, fontsize=9)
     plt.tight_layout()
     path = os.path.join(config.PLOTS_DIR, f"timeline_{flight_name}.png")
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
     print(f"  Saved timeline → {path}")

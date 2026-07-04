@@ -231,7 +231,7 @@ def plot_actual_vs_predicted(predictions: list, metrics: dict):
     plt.tight_layout()
 
     path = os.path.join(config.PLOTS_DIR, "apogee_scatter.png")
-    plt.savefig(path, dpi=180); plt.close()
+    plt.savefig(path, dpi=300); plt.close()
     print(f"  Saved scatter → {path}")
 
 
@@ -266,7 +266,7 @@ def plot_per_rocket_bars(predictions: list):
     plt.tight_layout()
 
     path = os.path.join(config.PLOTS_DIR, "apogee_per_rocket.png")
-    plt.savefig(path, dpi=180); plt.close()
+    plt.savefig(path, dpi=300); plt.close()
     print(f"  Saved bar chart → {path}")
 
 
@@ -286,7 +286,7 @@ def plot_feature_importance_reg(model, feature_names: list):
     plt.tight_layout()
 
     path = os.path.join(config.PLOTS_DIR, "apogee_feature_importance.png")
-    plt.savefig(path, dpi=180); plt.close()
+    plt.savefig(path, dpi=300); plt.close()
     print(f"  Saved feature importance → {path}")
 
 

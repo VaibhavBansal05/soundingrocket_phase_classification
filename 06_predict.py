@@ -211,7 +211,7 @@ def plot_prediction(df, flight_name, model_name):
         config.PLOTS_DIR,
         f"prediction_{flight_name}_{model_name.lower()}.png"
     )
-    plt.savefig(plot_path, dpi=150)
+    plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"\n  Plot saved → {plot_path}")
 

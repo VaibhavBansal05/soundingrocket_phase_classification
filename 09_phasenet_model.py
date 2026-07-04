@@ -120,14 +120,32 @@ class PhaseNetTrainer:
         self.ce_loss_fn   = tf.keras.losses.CategoricalCrossentropy()
 
     @tf.function(reduce_retracing=True)
-    def _compiled_train_step(self, X_batch, y_batch, y_pred_prev):
+    def _compiled_train_step(self, X_batch, y_batch, prev_last_pred):
         """Graph-compiled inner step: forward pass + physics loss + gradient update.
         Compiled with @tf.function for 5-10x CPU speedup over eager mode.
         Returns tensors (not Python scalars) to stay inside the graph.
+
+        `prev_last_pred` is the model's prediction for the single sample that
+        immediately precedes this batch in temporal order (a (n_classes,)
+        vector carried over from the previous batch, or a zeros prior for the
+        very first batch of an epoch). L_transition needs, for every sample i
+        in the batch, the prediction for sample i-1 — i.e. the *previous
+        timestep*, not the previous batch as a whole. That is constructed
+        here by shifting the batch's own predictions down by one row and
+        filling row 0 with `prev_last_pred`. Gradients are stopped through
+        this shifted tensor because it plays the role of a fixed reference
+        state (its class is only read via argmax downstream, which is
+        already non-differentiable).
         """
         with tf.GradientTape() as tape:
-            y_pred    = self.model(X_batch, training=True)
-            ce_loss   = self.ce_loss_fn(y_batch, y_pred)
+            y_pred = self.model(X_batch, training=True)
+            ce_loss = self.ce_loss_fn(y_batch, y_pred)
+
+            y_pred_prev = tf.concat(
+                [tf.expand_dims(prev_last_pred, 0), y_pred[:-1]], axis=0
+            )
+            y_pred_prev = tf.stop_gradient(y_pred_prev)
+
             phys_loss = self.physics_loss(y_pred, X_batch, y_pred_prev=y_pred_prev)
             total_loss = ce_loss + phys_loss
 
@@ -137,37 +155,17 @@ class PhaseNetTrainer:
         correct = tf.reduce_sum(
             tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
         )
-        return total_loss, ce_loss, phys_loss, correct, y_pred
+        new_last_pred = tf.stop_gradient(y_pred[-1])
+        return total_loss, ce_loss, phys_loss, correct, new_last_pred
 
-    def train_step(self, X_batch, y_batch, y_pred_prev=None):
+    def train_step(self, X_batch, y_batch, prev_last_pred):
         """Thin Python wrapper around the compiled train step.
         Extracts Python scalars after the compiled function returns.
         """
-        # Use a zeros tensor as a sentinel when y_pred_prev is not yet available
-        # (first batch of first epoch). The compiled function handles trimming.
-        if y_pred_prev is None:
-            y_pred_prev_tf = tf.zeros(
-                (tf.shape(X_batch)[0], self.n_classes), dtype=tf.float32
-            )
-            # Signal the physics loss that this is the first step by passing None
-            # through the existing None-check path in transition_loss.
-            # We achieve this by running eager for the very first batch only.
-            with tf.GradientTape() as tape:
-                y_pred    = self.model(X_batch, training=True)
-                ce_loss   = self.ce_loss_fn(y_batch, y_pred)
-                phys_loss = self.physics_loss(y_pred, X_batch, y_pred_prev=None)
-                total_loss = ce_loss + phys_loss
-            grads = tape.gradient(total_loss, self.model.trainable_variables)
-            self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
-            correct = int(tf.reduce_sum(
-                tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
-            ))
-            return float(total_loss), float(ce_loss), float(phys_loss), correct, y_pred
-
-        total_loss, ce_loss, phys_loss, correct, y_pred = self._compiled_train_step(
-            X_batch, y_batch, y_pred_prev
+        total_loss, ce_loss, phys_loss, correct, new_last_pred = self._compiled_train_step(
+            X_batch, y_batch, prev_last_pred
         )
-        return float(total_loss), float(ce_loss), float(phys_loss), int(correct), y_pred
+        return float(total_loss), float(ce_loss), float(phys_loss), int(correct), new_last_pred
 
     @tf.function(reduce_retracing=True)
     def _compiled_eval_step(self, X_batch, y_batch):
@@ -195,9 +193,14 @@ class PhaseNetTrainer:
         y_train_cat = to_categorical(y_train, self.n_classes)
         y_val_cat   = to_categorical(y_val, self.n_classes)
 
-        # Convert to tf.data for efficient batching
+        # Convert to tf.data for efficient batching.
+        # NOTE: intentionally NOT shuffled. X_train/y_train are sliding-window
+        # sequences in temporal order, and L_transition needs each sample's
+        # true previous-timestep prediction (see _compiled_train_step). A
+        # per-sample shuffle would pair unrelated samples across batches and
+        # silently zero out the transition constraint's effect.
         train_ds = tf.data.Dataset.from_tensor_slices((X_train, y_train_cat))
-        train_ds = train_ds.shuffle(n_train).batch(batch_size).prefetch(2)
+        train_ds = train_ds.batch(batch_size).prefetch(2)
 
         val_ds = tf.data.Dataset.from_tensor_slices((X_val, y_val_cat))
         val_ds = val_ds.batch(batch_size).prefetch(2)
@@ -214,11 +217,15 @@ class PhaseNetTrainer:
             epoch_losses = []
             epoch_correct = 0
             epoch_total   = 0
-            y_pred_prev_batch = None  # track across batches for L_transition
+            # Carry: the single previous sample's prediction, shifted into
+            # each new batch so L_transition compares true consecutive
+            # timesteps (see _compiled_train_step). Reset every epoch since
+            # there is no real "previous sample" before the first window.
+            prev_last_pred = tf.zeros((self.n_classes,), dtype=tf.float32)
 
             for X_b, y_b in train_ds:
-                loss, ce, phys, correct, y_pred_prev_batch = self.train_step(
-                    X_b, y_b, y_pred_prev=y_pred_prev_batch
+                loss, ce, phys, correct, prev_last_pred = self.train_step(
+                    X_b, y_b, prev_last_pred
                 )
                 epoch_losses.append(loss)
                 epoch_correct += correct
@@ -502,12 +509,12 @@ def plot_attention_heatmap(model, X_sample, y_sample_raw, feature_cols,
             f"{attn_weights.shape[1]} heads)",
             fontsize=12, fontweight="bold"
         )
-        plt.colorbar(im, ax=ax, label="Attention Weight")
+        plt.colorbar(im, ax=ax, label="Attention Weight (averaged across heads)")
         plt.tight_layout()
 
         path = os.path.join(config.PLOTS_DIR,
                             f"phasenet_attention_{fold_name}.png")
-        plt.savefig(path, dpi=180)
+        plt.savefig(path, dpi=300)
         plt.close()
         print(f"  Saved attention heatmap → {path}")
     except Exception as e:
@@ -543,7 +550,7 @@ def _plot_learning_curve(history, fold_name, variant_name="PhaseNet"):
     safe_name = variant_name.lower().replace(" ", "_").replace("-", "_")
     path = os.path.join(config.PLOTS_DIR,
                         f"{safe_name}_learning_{fold_name}.png")
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=300)
     plt.close()
 
 

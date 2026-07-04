@@ -157,7 +157,7 @@ def _plot_learning_curve(history, fold_name):
     ax2.set_title(f"LSTM Accuracy [{fold_name}]"); ax2.legend()
     plt.tight_layout()
     path = os.path.join(config.PLOTS_DIR, f"lstm_learning_{fold_name}.png")
-    plt.savefig(path, dpi=150); plt.close()
+    plt.savefig(path, dpi=300); plt.close()
 
 
 def main():
