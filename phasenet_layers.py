@@ -17,12 +17,14 @@ Author : PhaseNet (Custom architecture — not available in any library)
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, Model
+import keras
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1.  DILATED CAUSAL CONV BLOCK  (TCN building block)
 # ═══════════════════════════════════════════════════════════════════════
 
+@keras.saving.register_keras_serializable()
 class DilatedCausalConvBlock(layers.Layer):
     """
     Single residual block:  CausalConv1D → LayerNorm → GELU → Dropout
@@ -36,9 +38,9 @@ class DilatedCausalConvBlock(layers.Layer):
     def __init__(self, filters, kernel_size, dilation_rate, dropout=0.2,
                  **kwargs):
         super().__init__(**kwargs)
-        self.filters       = filters
-        self.kernel_size   = kernel_size
-        self.dilation_rate = dilation_rate
+        self.filters       = int(filters)
+        self.kernel_size   = int(kernel_size)
+        self.dilation_rate = int(dilation_rate)
         self.dropout_rate  = dropout
 
     def build(self, input_shape):
@@ -106,6 +108,7 @@ class DilatedCausalConvBlock(layers.Layer):
 # 2.  TCN BRANCH  (stack of dilated causal blocks at one scale)
 # ═══════════════════════════════════════════════════════════════════════
 
+@keras.saving.register_keras_serializable()
 class TCNBranch(layers.Layer):
     """
     A single-scale temporal branch:  stacks DilatedCausalConvBlocks
@@ -122,8 +125,8 @@ class TCNBranch(layers.Layer):
     def __init__(self, filters, kernel_size, dilations, dropout=0.2,
                  **kwargs):
         super().__init__(**kwargs)
-        self.filters     = filters
-        self.kernel_size = kernel_size
+        self.filters     = int(filters)
+        self.kernel_size = int(kernel_size)
         self.dilations   = dilations
         self.dropout_rate = dropout
 
@@ -160,6 +163,7 @@ class TCNBranch(layers.Layer):
 # 3.  MULTI-SCALE TEMPORAL ENCODER  (parallel TCN branches)
 # ═══════════════════════════════════════════════════════════════════════
 
+@keras.saving.register_keras_serializable()
 class MultiScaleTemporalEncoder(layers.Layer):
     """
     Runs the input through N parallel TCN branches, each with a
@@ -180,7 +184,7 @@ class MultiScaleTemporalEncoder(layers.Layer):
                         e.g., {3: [1,2,4,8], 7: [1,2,4], 15: [1,2]}
         """
         super().__init__(**kwargs)
-        self.scales_config = scales_config
+        self.scales_config = {int(k): v for k, v in scales_config.items()}
         self.filters       = filters
         self.dropout_rate  = dropout
 
@@ -216,6 +220,7 @@ class MultiScaleTemporalEncoder(layers.Layer):
 # 4.  CROSS-SCALE ATTENTION FUSION
 # ═══════════════════════════════════════════════════════════════════════
 
+@keras.saving.register_keras_serializable()
 class CrossScaleAttentionFusion(layers.Layer):
     """
     Multi-Head Self-Attention across the concatenated multi-scale features.
@@ -370,6 +375,11 @@ class PhysicsConstraintLoss:
         """
         if y_pred_prev is None:
             return 0.0
+
+        # Guard: if batch sizes differ (e.g. last mini-batch is smaller),
+        # trim y_pred_prev to the current batch size so shapes are compatible.
+        current_bs = tf.shape(y_pred)[0]
+        y_pred_prev = y_pred_prev[:current_bs]
 
         # Previous most-likely class  → one-hot → which next classes are illegal
         prev_class = tf.argmax(y_pred_prev, axis=-1)  # (batch,)

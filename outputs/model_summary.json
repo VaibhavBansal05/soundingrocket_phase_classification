@@ -1,8 +1,8 @@
 [
   {
     "model": "XGBoost",
-    "mean_macro_f1": 0.8298634685873595,
-    "std_macro_f1": 0.11591568608882584
+    "mean_macro_f1": 0.8298404900918611,
+    "std_macro_f1": 0.11870447408284111
   },
   {
     "model": "RandomForest",
@@ -15,13 +15,13 @@
     "std_macro_f1": 0.22680448457616512
   },
   {
-    "model": "PhaseNet",
-    "mean_macro_f1": 0.7190949136895604,
-    "std_macro_f1": 0.2666150472207513
+    "model": "LSTM",
+    "mean_macro_f1": 0.7292209890407674,
+    "std_macro_f1": 0.26520543508421357
   },
   {
-    "model": "PI-XGB",
-    "mean_macro_f1": 0.8378979013218464,
-    "std_macro_f1": 0.11220080217487562
+    "model": "PhaseNet",
+    "mean_macro_f1": 0.710600927688626,
+    "std_macro_f1": 0.2842663121064162
   }
 ]

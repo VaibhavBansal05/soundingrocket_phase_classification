@@ -119,33 +119,70 @@ class PhaseNetTrainer:
         self.n_classes    = n_classes
         self.ce_loss_fn   = tf.keras.losses.CategoricalCrossentropy()
 
-    def train_step(self, X_batch, y_batch):
-        """Single gradient update step with combined loss (eager mode)."""
+    @tf.function(reduce_retracing=True)
+    def _compiled_train_step(self, X_batch, y_batch, y_pred_prev):
+        """Graph-compiled inner step: forward pass + physics loss + gradient update.
+        Compiled with @tf.function for 5-10x CPU speedup over eager mode.
+        Returns tensors (not Python scalars) to stay inside the graph.
+        """
         with tf.GradientTape() as tape:
-            y_pred = self.model(X_batch, training=True)
-            ce_loss = self.ce_loss_fn(y_batch, y_pred)
-
-            # Physics constraint loss
-            phys_loss = self.physics_loss(y_pred, X_batch, y_pred_prev=None)
-
+            y_pred    = self.model(X_batch, training=True)
+            ce_loss   = self.ce_loss_fn(y_batch, y_pred)
+            phys_loss = self.physics_loss(y_pred, X_batch, y_pred_prev=y_pred_prev)
             total_loss = ce_loss + phys_loss
 
         grads = tape.gradient(total_loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
 
-        # Compute accuracy from current predictions (avoid second forward pass)
-        correct = int(tf.reduce_sum(
+        correct = tf.reduce_sum(
             tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
-        ))
-        return float(total_loss), float(ce_loss), float(phys_loss), correct
+        )
+        return total_loss, ce_loss, phys_loss, correct, y_pred
+
+    def train_step(self, X_batch, y_batch, y_pred_prev=None):
+        """Thin Python wrapper around the compiled train step.
+        Extracts Python scalars after the compiled function returns.
+        """
+        # Use a zeros tensor as a sentinel when y_pred_prev is not yet available
+        # (first batch of first epoch). The compiled function handles trimming.
+        if y_pred_prev is None:
+            y_pred_prev_tf = tf.zeros(
+                (tf.shape(X_batch)[0], self.n_classes), dtype=tf.float32
+            )
+            # Signal the physics loss that this is the first step by passing None
+            # through the existing None-check path in transition_loss.
+            # We achieve this by running eager for the very first batch only.
+            with tf.GradientTape() as tape:
+                y_pred    = self.model(X_batch, training=True)
+                ce_loss   = self.ce_loss_fn(y_batch, y_pred)
+                phys_loss = self.physics_loss(y_pred, X_batch, y_pred_prev=None)
+                total_loss = ce_loss + phys_loss
+            grads = tape.gradient(total_loss, self.model.trainable_variables)
+            self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+            correct = int(tf.reduce_sum(
+                tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
+            ))
+            return float(total_loss), float(ce_loss), float(phys_loss), correct, y_pred
+
+        total_loss, ce_loss, phys_loss, correct, y_pred = self._compiled_train_step(
+            X_batch, y_batch, y_pred_prev
+        )
+        return float(total_loss), float(ce_loss), float(phys_loss), int(correct), y_pred
+
+    @tf.function(reduce_retracing=True)
+    def _compiled_eval_step(self, X_batch, y_batch):
+        """Graph-compiled evaluation step."""
+        y_pred  = self.model(X_batch, training=False)
+        ce_loss = self.ce_loss_fn(y_batch, y_pred)
+        correct = tf.reduce_sum(
+            tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
+        )
+        return ce_loss, correct
 
     def eval_step(self, X_batch, y_batch):
-        y_pred = self.model(X_batch, training=False)
-        ce_loss = self.ce_loss_fn(y_batch, y_pred)
-        correct = int(tf.reduce_sum(
-            tf.cast(tf.argmax(y_pred, -1) == tf.argmax(y_batch, -1), tf.int32)
-        ))
-        return float(ce_loss), correct
+        """Thin Python wrapper around the compiled eval step."""
+        ce_loss, correct = self._compiled_eval_step(X_batch, y_batch)
+        return float(ce_loss), int(correct)
 
 
     def fit(self, X_train, y_train, X_val, y_val,
@@ -177,9 +214,12 @@ class PhaseNetTrainer:
             epoch_losses = []
             epoch_correct = 0
             epoch_total   = 0
+            y_pred_prev_batch = None  # track across batches for L_transition
 
             for X_b, y_b in train_ds:
-                loss, ce, phys, correct = self.train_step(X_b, y_b)
+                loss, ce, phys, correct, y_pred_prev_batch = self.train_step(
+                    X_b, y_b, y_pred_prev=y_pred_prev_batch
+                )
                 epoch_losses.append(loss)
                 epoch_correct += correct
                 epoch_total += len(X_b)
@@ -206,7 +246,7 @@ class PhaseNetTrainer:
             history["val_accuracy"].append(val_acc)
 
             # ── Progress log (every 5 epochs or last) ────────────────
-            if epoch % 5 == 0 or epoch == epochs - 1 or wait >= patience - 1:
+            if epoch % 1 == 0 or epoch == epochs - 1 or wait >= patience - 1:
                 marker = "*" if val_loss <= best_val_loss else " "
                 print(f"\r    Epoch {epoch+1:3d}/{epochs}  "
                       f"loss={train_loss:.4f}  acc={train_acc:.3f}  "
@@ -267,8 +307,18 @@ def train_fold(X_train, X_test, y_train, y_test,
     X_tr_s = scaler.fit_transform(X_train)
     X_te_s = scaler.transform(X_test)
 
+    # Apply SMOTE on flat scaled samples before sequence construction
+    # (fixes class-imbalance gap; consistent with 03_train_evaluate.py)
+    try:
+        from imblearn.over_sampling import SMOTE
+        sm = SMOTE(random_state=42)
+        X_tr_s, y_train_resampled = sm.fit_resample(X_tr_s, y_train)
+    except Exception as e:
+        print(f"  [SMOTE] skipped: {e}")
+        y_train_resampled = y_train
+
     # Build sequences
-    X_tr_seq, y_tr_seq = build_sequences(X_tr_s, y_train, seq_len)
+    X_tr_seq, y_tr_seq = build_sequences(X_tr_s, y_train_resampled, seq_len)
     X_te_seq, y_te_seq = build_sequences(X_te_s, y_test, seq_len)
 
     if len(X_te_seq) == 0:
